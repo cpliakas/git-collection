@@ -12,7 +12,6 @@
         }
     ],
     "require": {
-        "cpliakas/git-wrapper": "dev-master",
         "cpliakas/search-framework": "dev-master"
     },
     "autoload": {
