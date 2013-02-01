@@ -1,0 +1,24 @@
+{
+    "name": "cpliakas/git-collection",
+    "type": "library",
+    "description": "Provides collection of Git logs and diffs to the search framework library.",
+    "keywords": ["search", "search-framework", "git"],
+    "homepage": "https://github.com/cpliakas/git-collection",
+    "license": "LGPL-3.0",
+    "authors": [
+        {
+            "name": "Chris Pliakas",
+            "email": "opensource@chrispliakas.com"
+        }
+    ],
+    "require": {
+        "cpliakas/search-framework": "dev-master",
+        "cpliakas/git-wrapper": "dev-master"
+    },
+    "autoload": {
+        "psr-0": {
+            "Search\\Collection\\Git": "src/"
+        }
+    }
+}
+
