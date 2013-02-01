@@ -12,8 +12,8 @@
         }
     ],
     "require": {
-        "cpliakas/search-framework": "dev-master",
-        "cpliakas/git-wrapper": "dev-master"
+        "cpliakas/git-wrapper": "dev-master",
+        "cpliakas/search-framework": "dev-master"
     },
     "autoload": {
         "psr-0": {
