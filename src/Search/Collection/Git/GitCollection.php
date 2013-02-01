@@ -14,7 +14,7 @@ use Search\Framework\SearchCollectionQueue;
 use Search\Framework\SearchIndexDocument;
 
 /**
- * A search collection for    Git logs and diffs.
+ * A search collection for Git logs and diffs.
  */
 class GitCollection extends SearchCollectionAbstract
 {
@@ -36,29 +36,45 @@ class GitCollection extends SearchCollectionAbstract
     protected $_wrapper;
 
     /**
+     * The repository that the data are being collected from.
+     *
+     * @var string
+     */
+    protected $_repository;
+
+    /**
      * Implements Search::Collection::SearchCollectionAbstract::init().
      *
      * Sets the GitWrapper object.
+     *
+     * @throws \InvalidArgumentException
      */
     public function init()
     {
         $wrapper = $this->getOption('git_wrapper');
-
         if (!$wrapper instanceof GitWrapper) {
-
             $git_binary = $this->getOption('git_binary');
             $wrapper = new GitWrapper($git_binary);
         }
 
+        $repository = $this->getOption('repository');
+        if (!$repository) {
+            $message = 'The "repository" option is required.';
+            throw new \InvalidArgumentException($message);
+        }
+
+        $data_dir = $this->getOption('data_dir');
+        if (!$data_dir) {
+            $data_dir = realpath($this->getClassDir() . '/../../../../data');
+            if (!$data_dir) {
+                $message = 'Data directory "' . $data_dir . '" could not be resolved.';
+                throw new \InvalidArgumentException($message);
+            }
+        }
+
         $this->_wrapper = $wrapper;
-    }
-
-    /**
-     * Implements Search::Collection::SearchCollectionAbstract::getQueue().
-     */
-    public function getQueue($limit = SearchCollectionQueue::NO_LIMIT)
-    {
-
+        $this->_repository = $repository;
+        $this->_dataDir = $data_dir;
     }
 
     /**
@@ -69,6 +85,43 @@ class GitCollection extends SearchCollectionAbstract
     public function getWrapper()
     {
         return $this->_wrapper;
+    }
+
+    /**
+     * Implements Search::Collection::SearchCollectionAbstract::getQueue().
+     */
+    public function getQueue($limit = SearchCollectionQueue::NO_LIMIT)
+    {
+        $name = GitWrapper::parseRepositoryName($this->_repository);
+        $directory = $this->_dataDir . '/' . $name;
+        $git = $this->_wrapper->workingCopy($directory);
+
+        if (!$git->isCloned()) {
+            $git->clone($this->_repository);
+        } else {
+            $git->pull()->clearOutput();
+        }
+
+        $options = array();
+        if ($limit != SearchCollectionQueue::NO_LIMIT) {
+            $options['n'] = $limit;
+        }
+
+        $log = $git->log(null, null, $options);
+
+        // Parse raw output into into an array of commits.
+        $commits = array_filter(preg_split('/\n(?=commit [a-f0-9]{40})/s', $log));
+        return new SearchCollectionQueue($commits);
+    }
+
+    /**
+     * Implements Search::Collection::SearchCollectionAbstract::loadSourceData().
+     *
+     * Parses the line into an associative array of parts.
+     */
+    public function loadSourceData($item)
+    {
+
     }
 
     /**

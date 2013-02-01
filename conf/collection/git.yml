@@ -1,0 +1,30 @@
+label:        Git Collection
+description:  Integrates with the GitWrapper library to provide collections of Git logs and diffs.
+
+schema:
+
+  fields:
+
+    commit:
+      label:        Commit
+      description:  The unique hash of the commit.
+      store:        true
+
+    author:
+      label:        Author
+      description:  The author of the commit.
+      index:        false
+      store:        true
+
+    date:
+      label:        Channel subject
+      description:  The date the change was committed.
+      store:        true
+
+    message:
+      label:        Commit message
+      description:  The commit message committed.
+      store:        true
+
+  unique_field: commit
+
