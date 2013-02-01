@@ -1,7 +1,7 @@
 <?php
 
 /**
- * Git Collection
+ * Git collection for the Search Framework library.
  *
  * @license http://www.gnu.org/licenses/lgpl-3.0.txt
  */
@@ -118,10 +118,32 @@ class GitCollection extends SearchCollectionAbstract
      * Implements Search::Collection::SearchCollectionAbstract::loadSourceData().
      *
      * Parses the line into an associative array of parts.
+     *
+     * @return array
      */
     public function loadSourceData($item)
     {
+        $data = array();
+        list($headers, $message) = explode("\n\n", $item);
 
+        // Re-append a line break for lookahead pattern matching.
+        $headers .= "\n";
+
+        if (preg_match('/commit\s+([a-f0-9]{40})/s', $headers, $match)) {
+            $data['commit'] = $match[1];
+        }
+
+        if (preg_match('/Author:\s+(.+)(?=\n)/s', $headers, $match)) {
+            $data['author'] = $match[1];
+        }
+
+        if (preg_match('/Date:\s+(.+)(?=\n)/s', $headers, $match)) {
+            $data['date'] = strtotime($match[1]);
+        }
+
+        $data['message'] = trim($message);
+
+        return $data;
     }
 
     /**
@@ -132,6 +154,9 @@ class GitCollection extends SearchCollectionAbstract
      */
     public function buildDocument(SearchIndexDocument $document, $data)
     {
-
+        $document->commit = $data['commit'];
+        $document->author = $data['author'];
+        $document->date = date('Y-m-d\TH:i:s\Z', $data['date']);
+        $document->message = $data['message'];
     }
 }
