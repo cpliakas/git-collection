@@ -8,22 +8,36 @@ schema:
     commit:
       label:        Commit
       description:  The unique hash of the commit.
+      type:         string
+      analyze:      false
       store:        true
 
     author:
       label:        Author
       description:  The author of the commit.
+      type:         string
+      analyze:      false
+      index:        false
+      store:        true
+
+    committer:
+      label:        Committer
+      description:  The person who issued the commit.
+      type:         string
+      analyze:      false
       index:        false
       store:        true
 
     date:
       label:        Channel subject
       description:  The date the change was committed.
+      type:         date
       store:        true
 
     message:
       label:        Commit message
       description:  The commit message committed.
+      type:         string
       store:        true
 
   unique_field: commit
