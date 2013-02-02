@@ -137,6 +137,10 @@ class GitCollection extends SearchCollectionAbstract
             $data['author'] = $match[1];
         }
 
+        if (preg_match('/Committer:\s+(.+)(?=\n)/s', $headers, $match)) {
+            $data['committer'] = $match[1];
+        }
+
         if (preg_match('/Date:\s+(.+)(?=\n)/s', $headers, $match)) {
             $data['date'] = strtotime($match[1]);
         }
