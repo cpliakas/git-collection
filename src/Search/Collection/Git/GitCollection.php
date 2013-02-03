@@ -10,6 +10,7 @@ namespace Search\Collection\Git;
 
 use GitWrapper\GitWrapper;
 use Search\Framework\SearchCollectionAbstract;
+use Search\Framework\SearchCollectionQueue;
 use Search\Framework\SearchIndexDocument;
 use Search\Framework\SearchIndexer;
 
