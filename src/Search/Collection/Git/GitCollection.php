@@ -10,8 +10,8 @@ namespace Search\Collection\Git;
 
 use GitWrapper\GitWrapper;
 use Search\Framework\SearchCollectionAbstract;
-use Search\Framework\SearchCollectionQueue;
 use Search\Framework\SearchIndexDocument;
+use Search\Framework\SearchIndexer;
 
 /**
  * A search collection for Git logs and diffs.
@@ -90,7 +90,7 @@ class GitCollection extends SearchCollectionAbstract
     /**
      * Implements Search::Collection::SearchCollectionAbstract::getQueue().
      */
-    public function getQueue($limit = SearchCollectionQueue::NO_LIMIT)
+    public function getQueue($limit = SearchIndexer::NO_LIMIT)
     {
         $name = GitWrapper::parseRepositoryName($this->_repository);
         $directory = $this->_dataDir . '/' . $name;
@@ -103,7 +103,7 @@ class GitCollection extends SearchCollectionAbstract
         }
 
         $options = array();
-        if ($limit != SearchCollectionQueue::NO_LIMIT) {
+        if ($limit != SearchIndexer::NO_LIMIT) {
             $options['n'] = $limit;
         }
 
