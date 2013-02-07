@@ -10,9 +10,8 @@ namespace Search\Collection\Git;
 
 use GitWrapper\GitWrapper;
 use Search\Framework\SearchCollectionAbstract;
-use Search\Framework\SearchCollectionQueue;
+use Search\Framework\SearchQueueMessage;
 use Search\Framework\SearchIndexDocument;
-use Search\Framework\SearchIndexer;
 
 /**
  * A search collection for Git logs and diffs.
@@ -22,12 +21,11 @@ class GitCollection extends SearchCollectionAbstract
 
     protected static $_id = 'git';
 
-    /**
-     * This collection indexes data from git repositories.
-     *
-     * @var string
-     */
     protected $_type = 'git';
+
+    protected static $_defaultLimit = 200;
+
+    protected static $_defaultTimeout = 30;
 
     /**
      * The feed being parsed.
@@ -37,14 +35,21 @@ class GitCollection extends SearchCollectionAbstract
     protected $_wrapper;
 
     /**
-     * The repository that the data are being collected from.
+     * An associative array of GitWorkingCopy objects keyed by
+     *
+     * @var array
+     */
+    protected $_workingCopies;
+
+    /**
+     * The repository that the data is being collected from.
      *
      * @var string
      */
     protected $_repository;
 
     /**
-     * Implements Search::Collection::SearchCollectionAbstract::init().
+     * Implements SearchCollectionAbstract::init().
      *
      * Sets the GitWrapper object.
      *
@@ -66,7 +71,7 @@ class GitCollection extends SearchCollectionAbstract
 
         $data_dir = $this->getOption('data_dir');
         if (!$data_dir) {
-            $data_dir = realpath($this->getClassDir() . '/../../../../data');
+            $data_dir = realpath($this->_config->getRootDir($this) . '/data');
             if (!$data_dir) {
                 $message = 'Data directory "' . $data_dir . '" could not be resolved.';
                 throw new \InvalidArgumentException($message);
@@ -89,46 +94,99 @@ class GitCollection extends SearchCollectionAbstract
     }
 
     /**
-     * Implements Search::Collection::SearchCollectionAbstract::getQueue().
+     * Returns the GitWorkingCopy object for a given repository.
+     *
+     * @param string $url
+     *   The URL of the repository.
+     *
+     * @return \GitWrapper\GitWorkingCopy
      */
-    public function getQueue($limit = SearchIndexer::NO_LIMIT)
+    public function getGit($repository)
     {
-        $name = GitWrapper::parseRepositoryName($this->_repository);
-        $directory = $this->_dataDir . '/' . $name;
-        $git = $this->_wrapper->workingCopy($directory);
+        if (!isset($this->_workingCopies[$repository])) {
 
-        if (!$git->isCloned()) {
-            $git->clone($this->_repository);
-        } else {
-            $git->pull()->clearOutput();
+            $name = GitWrapper::parseRepositoryName($repository);
+            $directory = $this->_dataDir . '/' . $name;
+            $git = $this->_wrapper->workingCopy($directory);
+
+            if (!$git->isCloned()) {
+                $git->clone($this->_repository);
+            } else {
+                $git->pull()->clearOutput();
+            }
+
+            $this->_workingCopies[$repository] = $git;
         }
+        return $this->_workingCopies[$repository];
+    }
+
+    /**
+     * Implements SearchCollectionAbstract::fetchScheduledItems().
+     */
+    public function fetchScheduledItems()
+    {
+        $git = $this->getGit($this->_repository);
 
         $options = array();
-        if ($limit != SearchIndexer::NO_LIMIT) {
+        $limit = $this->getLimit();
+        if ($limit != self::NO_LIMIT) {
             $options['n'] = $limit;
         }
 
         $log = $git->log(null, null, $options);
 
-        // Parse raw output into into an array of commits.
-        $commits = array_filter(preg_split('/\n(?=commit [a-f0-9]{40})/s', $log));
-        return new SearchCollectionQueue($commits);
+        // Extract the commit hashes, suffix with the repository.
+        preg_match_all('/commit\s+([a-f0-9]{40})/s', $log, $matches);
+        array_walk($matches[1], array($this, 'appendRepository'), $this->_repository);
+
+        return new \ArrayIterator($matches[1]);
     }
 
     /**
-     * Implements Search::Collection::SearchCollectionAbstract::loadSourceData().
+     * Array walk callback that appends the repository to the commit and
+     * separates it by a colon.
+     *
+     * The resulting string is
+     */
+    public function appendRepository(&$commit, $key, $repository)
+    {
+        $commit .= ':' . $repository;
+    }
+
+    /**
+     * Implements SearchCollectionAbstract::buildQueueMessage().
+     *
+     * The item is the commit hash with the repository appended.
+     */
+    public function buildQueueMessage(SearchQueueMessage $message, $item)
+    {
+        $message->setBody($item);
+    }
+
+    /**
+     * Implements SearchCollectionAbstract::loadSourceData().
      *
      * Parses the line into an associative array of parts.
      *
      * @return array
      */
-    public function loadSourceData($item)
+    public function loadSourceData(SearchQueueMessage $message)
     {
-        $data = array();
-        list($headers, $message) = explode("\n\n", $item);
+        list($commit, $repository) = explode(':', $message->getBody(), 2);
+        $git = $this->getGit($repository);
+
+        $options = array(
+            'p' => $commit,
+            '1' => true,
+        );
+        $log = $git->log(null, null, $options);
+
+        list($headers, $message, $diff) = explode("\n\n", $log);
 
         // Re-append a line break for lookahead pattern matching.
         $headers .= "\n";
+
+        $data = array();
 
         if (preg_match('/commit\s+([a-f0-9]{40})/s', $headers, $match)) {
             $data['commit'] = $match[1];
@@ -147,6 +205,7 @@ class GitCollection extends SearchCollectionAbstract
         }
 
         $data['message'] = trim($message);
+        $data['diff'] = trim($diff);
 
         return $data;
     }
@@ -159,9 +218,9 @@ class GitCollection extends SearchCollectionAbstract
      */
     public function buildDocument(SearchIndexDocument $document, $data)
     {
-        $document->commit = $data['commit'];
-        $document->author = $data['author'];
-        $document->date = date('Y-m-d\TH:i:s\Z', $data['date']);
-        $document->message = $data['message'];
+        $data['date'] = date('Y-m-d\TH:i:s\Z', $data['date']);
+        foreach ($data as $field_name => $field_value) {
+            $document->$field_name = $field_value;
+        }
     }
 }
