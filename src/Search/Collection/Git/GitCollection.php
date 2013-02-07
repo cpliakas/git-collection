@@ -166,13 +166,15 @@ class GitCollection extends SearchCollectionAbstract
     /**
      * Implements SearchCollectionAbstract::loadSourceData().
      *
-     * Parses the line into an associative array of parts.
+     * Executes a `git log -p [commit] -1` command to get the data, parses the
+     * log entry into an associative array of parts.
      *
      * @return array
      */
     public function loadSourceData(SearchQueueMessage $message)
     {
-        list($commit, $repository) = explode(':', $message->getBody(), 2);
+        $identifier = $message->getBody();
+        list($commit, $repository) = explode(':', $identifier, 2);
         $git = $this->getGit($repository);
 
         $options = array(
@@ -186,7 +188,12 @@ class GitCollection extends SearchCollectionAbstract
         // Re-append a line break for lookahead pattern matching.
         $headers .= "\n";
 
-        $data = array();
+        $data = array(
+            'id' => $identifier,
+            'repository' => $repository,
+            'message' => trim($message),
+            'diff' => trim($diff),
+        );
 
         if (preg_match('/commit\s+([a-f0-9]{40})/s', $headers, $match)) {
             $data['commit'] = $match[1];
@@ -204,17 +211,11 @@ class GitCollection extends SearchCollectionAbstract
             $data['date'] = strtotime($match[1]);
         }
 
-        $data['message'] = trim($message);
-        $data['diff'] = trim($diff);
-
         return $data;
     }
 
     /**
      * Implements Search::Collection::SearchCollectionAbstract::buildDocument().
-     *
-     * @param SearchIndexDocument $document
-     *
      */
     public function buildDocument(SearchIndexDocument $document, $data)
     {

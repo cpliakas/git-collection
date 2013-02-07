@@ -5,9 +5,16 @@ schema:
 
   fields:
 
-    commit:
-      label:        Commit
-      description:  The unique hash of the commit.
+    id:
+      label:        ID
+      description:  A combination of the commit and repository.
+      type:         string
+      analyze:      false
+      store:        true
+
+    repository:
+      label:        Repository
+      description:  The repository the commit was made to.
       type:         string
       analyze:      false
       store:        true
@@ -48,5 +55,4 @@ schema:
       index:        false
       store:        true
 
-  unique_field: commit
-
+  unique_field: id
