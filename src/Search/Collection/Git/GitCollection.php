@@ -190,36 +190,32 @@ class GitCollection extends SearchCollectionAbstract
 
         $data = array(
             'id' => $identifier,
+            'commit' => $commit,
             'repository' => $repository,
             'message' => trim($message),
             'diff' => trim($diff),
         );
 
-        if (preg_match('/commit\s+([a-f0-9]{40})/s', $headers, $match)) {
-            $data['commit'] = $match[1];
-        }
+        $patterns = array(
+            'author' => '/Author:\s+(.+)(?=\n)/s',
+            'committer' => '/Committer:\s+(.+)(?=\n)/s',
+            'date' => '/Date:\s+(.+)(?=\n)/s',
+        );
 
-        if (preg_match('/Author:\s+(.+)(?=\n)/s', $headers, $match)) {
-            $data['author'] = $match[1];
-        }
-
-        if (preg_match('/Committer:\s+(.+)(?=\n)/s', $headers, $match)) {
-            $data['committer'] = $match[1];
-        }
-
-        if (preg_match('/Date:\s+(.+)(?=\n)/s', $headers, $match)) {
-            $data['date'] = strtotime($match[1]);
+        foreach ($patterns as $field_name => $pattern) {
+            if (preg_match($pattern, $headers, $match)) {
+                $data[$field_name] = $match[1];
+            }
         }
 
         return $data;
     }
 
     /**
-     * Implements Search::Collection::SearchCollectionAbstract::buildDocument().
+     * Implements SearchCollectionAbstract::buildDocument().
      */
     public function buildDocument(SearchIndexDocument $document, $data)
     {
-        $data['date'] = date('Y-m-d\TH:i:s\Z', $data['date']);
         foreach ($data as $field_name => $field_value) {
             $document->$field_name = $field_value;
         }

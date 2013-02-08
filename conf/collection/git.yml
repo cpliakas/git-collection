@@ -12,6 +12,13 @@ schema:
       analyze:      false
       store:        true
 
+    commit:
+      label:        Commit
+      description:  The commit hash.
+      type:         string
+      analyze:      false
+      store:        true
+
     repository:
       label:        Repository
       description:  The repository the commit was made to.
