@@ -19,9 +19,9 @@ use Search\Framework\SearchIndexDocument;
 class GitCollection extends SearchCollectionAbstract
 {
 
-    protected static $_id = 'git';
-
     protected $_type = 'git';
+
+    protected static $_configBasename = 'git';
 
     protected static $_defaultLimit = 200;
 
