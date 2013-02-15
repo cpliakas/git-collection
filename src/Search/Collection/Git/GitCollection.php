@@ -9,23 +9,20 @@
 namespace Search\Collection\Git;
 
 use GitWrapper\GitWrapper;
-use Search\Framework\SearchCollectionAbstract;
-use Search\Framework\SearchQueueMessage;
-use Search\Framework\SearchIndexDocument;
+use Search\Framework\CollectionAbstract;
+use \Search\Framework\CollectionAgentAbstract;
+use Search\Framework\IndexDocument;
+use Search\Framework\QueueMessage;
 
 /**
  * A search collection for Git logs and diffs.
  */
-class GitCollection extends SearchCollectionAbstract
+class GitCollection extends CollectionAbstract
 {
 
     protected $_type = 'git';
 
     protected static $_configBasename = 'git';
-
-    protected static $_defaultLimit = 200;
-
-    protected static $_defaultTimeout = 30;
 
     /**
      * The feed being parsed.
@@ -42,55 +39,87 @@ class GitCollection extends SearchCollectionAbstract
     protected $_workingCopies;
 
     /**
-     * The repository that the data is being collected from.
+     * The repositories that the data is being collected from.
      *
-     * @var string
+     * @var array
      */
-    protected $_repository;
+    protected $_repositories = array();
 
     /**
-     * Implements SearchCollectionAbstract::init().
+     * Implements CollectionAbstract::init().
      *
+     * No-op.
+     */
+    public function init(array $options) {}
+
+    /**
      * Sets the GitWrapper object.
      *
-     * @throws \InvalidArgumentException
+     * @return GitCollection
      */
-    public function init()
+    public function setGitWrapper(GitWrapper $wrapper)
     {
-        $wrapper = $this->getOption('git_wrapper');
-        if (!$wrapper instanceof GitWrapper) {
-            $git_binary = $this->getOption('git_binary');
-            $wrapper = new GitWrapper($git_binary);
-        }
-
-        $repository = $this->getOption('repository');
-        if (!$repository) {
-            $message = 'The "repository" option is required.';
-            throw new \InvalidArgumentException($message);
-        }
-
-        $data_dir = $this->getOption('data_dir');
-        if (!$data_dir) {
-            $data_dir = realpath($this->_config->getRootDir($this) . '/data');
-            if (!$data_dir) {
-                $message = 'Data directory "' . $data_dir . '" could not be resolved.';
-                throw new \InvalidArgumentException($message);
-            }
-        }
-
         $this->_wrapper = $wrapper;
-        $this->_repository = $repository;
-        $this->_dataDir = $data_dir;
+        return $this;
     }
 
     /**
      * Returns the GitWrapper object.
      *
+     * If a GitWrapper object is not set, one is instantiated with the defaults.
+     *
      * @return GitWrapper
      */
-    public function getWrapper()
+    public function getGitWrapper()
     {
+        if (!isset($this->_wrapper)) {
+            $this->_wrapper = new GitWrapper();
+        }
         return $this->_wrapper;
+    }
+
+    /**
+     * Sets the directory that the repositories will be cloned to.
+     *
+     * @return GitCollection
+     */
+    public function setDataDir($data_dir)
+    {
+        $this->_dataDir = $data_dir;
+        return $this;
+    }
+
+    /**
+     * Attach a repository.
+     *
+     * @param string $repository
+     *   The URL of the Git repository.
+     *
+     * @return GitCollection
+     */
+    public function attachRepository($repository)
+    {
+        $this->_repositories[] = $repository;
+        return $this;
+    }
+
+
+    /**
+     * Returns the data directory.
+     *
+     * If a data directory is not set, the "data" directory of this project's
+     * root is set as the data directory.
+     *
+     * @return string
+     */
+    public function getDataDir()
+    {
+        if (!isset($this->_dataDir)) {
+            $reflection = new \ReflectionClass($this);
+            $class_dir = dirname($reflection->getFileName());
+            $this->_dataDir = realpath($class_dir . '/../../../../data');
+        }
+        return $this->_dataDir;
     }
 
     /**
@@ -106,11 +135,11 @@ class GitCollection extends SearchCollectionAbstract
         if (!isset($this->_workingCopies[$repository])) {
 
             $name = GitWrapper::parseRepositoryName($repository);
-            $directory = $this->_dataDir . '/' . $name;
-            $git = $this->_wrapper->workingCopy($directory);
+            $directory = $this->getDataDir() . '/' . $name;
+            $git = $this->getGitWrapper()->workingCopy($directory);
 
             if (!$git->isCloned()) {
-                $git->clone($this->_repository);
+                $git->clone($repository);
             } else {
                 $git->pull()->clearOutput();
             }
@@ -121,25 +150,29 @@ class GitCollection extends SearchCollectionAbstract
     }
 
     /**
-     * Implements SearchCollectionAbstract::fetchScheduledItems().
+     * Implements CollectionAbstract::fetchScheduledItems().
      */
-    public function fetchScheduledItems()
+    public function fetchScheduledItems($limit = CollectionAgentAbstract::NO_LIMIT)
     {
-        $git = $this->getGit($this->_repository);
+        $items = array();
+        foreach ($this->_repositories as $repository) {
+            $git = $this->getGit($repository);
 
-        $options = array();
-        $limit = $this->getLimit();
-        if ($limit != self::NO_LIMIT) {
-            $options['n'] = $limit;
+            $options = array();
+            if ($limit != CollectionAgentAbstract::NO_LIMIT) {
+                $options['n'] = $limit;
+            }
+
+            $log_messages = $git->log(null, null, $options);
+
+            // Extract the commit hashes, suffix with the repository.
+            preg_match_all('/commit\s+([a-f0-9]{40})/s', $log_messages, $matches);
+            array_walk($matches[1], array($this, 'appendRepository'), $repository);
+
+            $items = array_merge($items, $matches[1]);
         }
 
-        $log = $git->log(null, null, $options);
-
-        // Extract the commit hashes, suffix with the repository.
-        preg_match_all('/commit\s+([a-f0-9]{40})/s', $log, $matches);
-        array_walk($matches[1], array($this, 'appendRepository'), $this->_repository);
-
-        return new \ArrayIterator($matches[1]);
+        return new \ArrayIterator($items);
     }
 
     /**
@@ -154,24 +187,24 @@ class GitCollection extends SearchCollectionAbstract
     }
 
     /**
-     * Implements SearchCollectionAbstract::buildQueueMessage().
+     * Implements CollectionAbstract::buildQueueMessage().
      *
      * The item is the commit hash with the repository appended.
      */
-    public function buildQueueMessage(SearchQueueMessage $message, $item)
+    public function buildQueueMessage(QueueMessage $message, $item)
     {
         $message->setBody($item);
     }
 
     /**
-     * Implements SearchCollectionAbstract::loadSourceData().
+     * Implements CollectionAbstract::loadSourceData().
      *
      * Executes a `git log -p [commit] -1` command to get the data, parses the
      * log entry into an associative array of parts.
      *
      * @return array
      */
-    public function loadSourceData(SearchQueueMessage $message)
+    public function loadSourceData(QueueMessage $message)
     {
         $identifier = $message->getBody();
         list($commit, $repository) = explode(':', $identifier, 2);
@@ -212,9 +245,9 @@ class GitCollection extends SearchCollectionAbstract
     }
 
     /**
-     * Implements SearchCollectionAbstract::buildDocument().
+     * Implements CollectionAbstract::buildDocument().
      */
-    public function buildDocument(SearchIndexDocument $document, $data)
+    public function buildDocument(IndexDocument $document, $data)
     {
         foreach ($data as $field_name => $field_value) {
             $document->$field_name = $field_value;
